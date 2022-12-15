@@ -1,8 +1,6 @@
-comm_crimes <- readr::read_csv("D:/Datasets/sna/Comm_crimes.csv")
-demo_data <- readr::read_csv("D:/Datasets/sna/ReferenceCCAProfiles20162020.csv")
+comm_crimes <- readr::read_csv("D:/Dataset/crime_data/Comm_crimes.csv")
+demo_data <- readr::read_csv("D:/Dataset/crime_data/DaReferenceCCAProfiles20162020.csv")
 demo_data <- demo_data[order(demo_data$GEOID),] #order by area
-
-### Data preparation #############################
 
 areas <- 1:77
 sub <- comm_crimes
@@ -30,6 +28,7 @@ get_crime_data <- function(is_preprocessed = TRUE){
     return(crimes)
   }
 }
+
 
 crimes <- get_crime_data()
 
@@ -113,12 +112,25 @@ node_info$GRAD_PROF <- demo_data$GRAD_PROF/ edu_pop
 
 as.matrix(node_info[node_info$areas == 3,c('Latitude','Longitude')])
 
-### Building fully connected geo Network ###############################
+################################################################################
+##################### Building fully connected geo Network ###############################
 df_fully <- expand.grid(areas, areas)
 colnames(df_fully) <- c('area1', 'area2')
 
 # remove duplicage edges
 df_fully <- df_fully[df_fully$area2 > df_fully$area1,]
+
+
+distance_coords2<- function(lat1,lon1,lat2,lon2){
+  # Calculate the distance using the Haversine formula
+  dlon = lon2 - lon1
+  dlat = lat2 - lat1
+  a = (sin(dlat/2)**2) + (cos(lat1) * cos(lat2) * (sin(dlon/2)**2))
+  c = 2 * atan2(sqrt(a), sqrt(1-a))
+  distance = 6371 * c
+  
+  return(distance*1000)
+}
 
 distance_coords <- function(lat1,lon1,lat2,lon2) {
   3963.0 * acos( (sin(lat1) * sin(lat2)) + cos(lat1) * cos(lat2) * cos(lon2-lon1))
@@ -141,24 +153,25 @@ for (i in 1:nrow(df_fully)){
 df_fully$weight <- distances
 colnames(df_fully) <- c('area1', 'area2', 'weight')
 
+
 network <- network::network(df_fully, loops = TRUE, multiple = FALSE) # need to set directed false?
 network_i <- snafun::to_igraph(network)
 network_i <- igraph::as.undirected(network_i)
 
 weights <- df_fully$weight
-weights.inverted <- 1/df_fully$weight
-weights.zscore_normalized <- (df_fully$weight - mean(df_fully$weight, na.rm = TRUE)) / sd(df_fully$weight, na.rm = TRUE)
-weights.inverted.zscore_normalized <- (weights.inverted - mean(weights.inverted, na.rm = TRUE)) / sd(weights.inverted, na.rm = TRUE)
-weights.exp <- 10000/(df_fully$weight ^ 1.25)
+
+weights.inverted <- 1 / log(df_fully$weight)
 
 # plot weight distribution
-hist(weights.exp,breaks = 30, xlab = 'distance between 2 neighborhoods')
+# hist(weights.exp,breaks = 30, xlab = 'distance between 2 neighborhoods')
 
 network_i <- snafun::add_edge_attributes(network_i, c('weight'), weights.inverted) # 1/weight because the closer, the stronger the connection
 network_i <- snafun::remove_loops(network_i)
 
-### Adding vertex attributes ###############################
+################################################################################
+####################### Adding vertex attributes ###############################
 data_in_network <-matrix(, nrow = 0, ncol = 31)
+
 
 #remove names
 node_info <- node_info[!names(node_info) %in% c('names')]
@@ -171,17 +184,40 @@ for (area in areas){
 
 network_i <- snafun::add_vertex_attributes(network_i, value = data_in_network)                           
 
+### START PLOTTING ###
+### plot a less densely populated network with only edges between close neighbors
+halfhalf <- function(x){
+  if (x<200){
+    return(0.1)
+  }
+  else{
+    return(NA)
+  }
+}
+# edges_shown <- sapply(igraph::E(network_i)$weight,halfhalf)
+# network_i.copy <- igraph::delete.edges(network_i, which(igraph::E(network_i)$weight >= median(igraph::E(network_i)$weight) )-1)
+# plot(network_i.copy, layout = igraph::layout.fruchterman.reingold(network_i.copy),
+#      edge.arrow.size = edges_shown, # the farther away, the smaller
+#      edge.color = '#eab676',
+#      vertex.frame.color = '#ffffff',
+#      # vertex.label.cex = 0.2,
+#      vertex.label.color = 'black',
+#      vertex.color = '#abdbe3',
+#      vertex.size = 10)
+### END PLOTTING ###
+
 # creating weight matrix
 net <- network_i
+
 attrs <- snafun::extract_all_vertex_attributes(net)
 colnames(attrs)
 attr_names <- c("perc_unemp", "med_age", "LT_HS","HS", "SOME_COLL", "ASSOC", "BACH", "GRAD_PROF", "perc_black", "perc_asian", "perc_white","perc_hispanic", 
-                "perc_inc_under_25", "perc_inc_25_50", "perc_inc_50_75", "perc_inc_75_100","perc_inc_100_150")
+                "perc_inc_under_25", "perc_inc_25_50", "perc_inc_50_75", "perc_inc_75_100","perc_inc_100_150") #,"perc_inc_over_150"
 
 
 crimes_names = c("THEFT","ASSAULT","BATTERY","CRIMINAL DAMAGE",'DECEPTIVE PRACTICE','NARCOTICS', 'BURGLARY', 'MOTOR VEHICLE THEFT', 'ROBBERY', "CRIMINAL TRESPASS")
 
-### LNAM using ADJACENCY MATRIX (These are the main results) #######################################
+### LNAM using ADJACENCY MATRIX #######################################
 streq2 <- snafun::to_matrix(net)
 diag(streq2) <- 0
 W_equiv2 <-  streq2 / rowSums(streq2)
@@ -220,53 +256,56 @@ model10.am <- sna::lnam(y = as.numeric(attrs[, "CRIMINAL TRESPASS"]),
 texreg::screenreg(list(model1.am,model2.am,model3.am,model4.am,model5.am,model6.am,model7.am,model8.am,model9.am,model10.am), custom.model.names = crimes_names)
 plot(model5.am)
 
+### END LNAM using ADJACENCY MATRIX #######################################
+
 ### LNAM using structural equivelence #######################################
-# this one does not make a lot of sence to use, since it looks at how 'similar' nodes are to eachother in terms of structure. but since they are fully connected this does not make sence. Either way its interesting to check.
+# this one does not make a lot of sence to use, since it looks at how 'similar' nodes are to eachother in terms of structure. but since they are fully connected this does not make sence.
 
 streq <- snafun::d_structural_equivalence(net, weights =  'weight')
 diag(streq) <- 0
 W_equiv <-  streq / rowSums(streq)
-
-model1.se <- sna::lnam(y = as.numeric(attrs[,  'THEFT']),
-                    x = as.matrix(attrs[, attr_names]),
-                    W1 = W_equiv, null.model='meanstd')
-model2.se <- sna::lnam(y = as.numeric(attrs[, 'ASSAULT']),
-                    x = as.matrix(attrs[, attr_names]),
-                    W1 = W_equiv, null.model='meanstd')
-model3.se <- sna::lnam(y = as.numeric(attrs[, 'BATTERY']),
-                    x = as.matrix(attrs[, attr_names]),
-                    W1 = W_equiv, null.model='meanstd')
-model4.se <- sna::lnam(y = as.numeric(attrs[, 'CRIMINAL DAMAGE']),
-                    x = as.matrix(attrs[, attr_names]),
-                    W1 = W_equiv, null.model='meanstd')
-model5.se <- sna::lnam(y = as.numeric(attrs[, 'DECEPTIVE PRACTICE']),
-                    x = as.matrix(attrs[, attr_names]),
-                    W1 = W_equiv, null.model='meanstd')
-model6.se <- sna::lnam(y = as.numeric(attrs[, 'NARCOTICS']),
-                    x = as.matrix(attrs[, attr_names]),
-                    W1 = W_equiv, null.model='meanstd')
+# 
+# model1.se <- sna::lnam(y = as.numeric(attrs[,  'THEFT']),
+#                     x = as.matrix(attrs[, attr_names]),
+#                     W1 = W_equiv, null.model='meanstd')
+# model2.se <- sna::lnam(y = as.numeric(attrs[, 'ASSAULT']),
+#                     x = as.matrix(attrs[, attr_names]),
+#                     W1 = W_equiv, null.model='meanstd')
+# model3.se <- sna::lnam(y = as.numeric(attrs[, 'BATTERY']),
+#                     x = as.matrix(attrs[, attr_names]),
+#                     W1 = W_equiv, null.model='meanstd')
+# model4.se <- sna::lnam(y = as.numeric(attrs[, 'CRIMINAL DAMAGE']),
+#                     x = as.matrix(attrs[, attr_names]),
+#                     W1 = W_equiv, null.model='meanstd')
+# model5.se <- sna::lnam(y = as.numeric(attrs[, 'DECEPTIVE PRACTICE']),
+#                     x = as.matrix(attrs[, attr_names]),
+#                     W1 = W_equiv, null.model='meanstd')
+# model6.se <- sna::lnam(y = as.numeric(attrs[, 'NARCOTICS']),
+#                     x = as.matrix(attrs[, attr_names]),
+#                     W1 = W_equiv, null.model='meanstd')
 model7.se <- sna::lnam(y = as.numeric(attrs[, 'BURGLARY']),
-                    x = as.matrix(attrs[, attr_names]),
-                    W1 = W_equiv, null.model='meanstd')
-model8.se <- sna::lnam(y = as.numeric(attrs[, 'MOTOR VEHICLE THEFT']),
-                    x = as.matrix(attrs[, attr_names]),
-                    W1 = W_equiv, null.model='meanstd')
-model9.se <- sna::lnam(y = as.numeric(attrs[, 'ROBBERY']),
-                    x = as.matrix(attrs[, attr_names]),
-                    W1 = W_equiv, null.model='meanstd')
-model10.se <- sna::lnam(y = as.numeric(attrs[, "CRIMINAL TRESPASS"]),
-              x = as.matrix(attrs[, attr_names]),
-              W1 = W_equiv, null.model='meanstd')
+                       x = as.matrix(attrs[, attr_names]),
+                       W1 = W_equiv, null.model='meanstd')
+# model8.se <- sna::lnam(y = as.numeric(attrs[, 'MOTOR VEHICLE THEFT']),
+#                     x = as.matrix(attrs[, attr_names]),
+#                     W1 = W_equiv, null.model='meanstd')
+# model9.se <- sna::lnam(y = as.numeric(attrs[, 'ROBBERY']),
+#                     x = as.matrix(attrs[, attr_names]),
+#                     W1 = W_equiv, null.model='meanstd')
+# model10.se <- sna::lnam(y = as.numeric(attrs[, "CRIMINAL TRESPASS"]),
+#               x = as.matrix(attrs[, attr_names]),
+#               W1 = W_equiv, null.model='meanstd')
+# 
+# texreg::screenreg(list(model1.se,model2.se,model3.se,model4.se,model5.se,model6.se,model7.se,model8.se,model9.se,model10.se), custom.model.names = crimes_names)
+# plot(model1.se)
 
-texreg::screenreg(list(model1.se,model2.se,model3.se,model4.se,model5.se,model6.se,model7.se,model8.se,model9.se,model10.se), custom.model.names = crimes_names)
-plot(model1.se)
+### END LNAM using structural equivelence #######################################
 
-
-### comparing if different methods have different effect #######################################
+### comparing different methods #######################################
 
 # model1.nm <- sna::lnam(y = as.numeric(attrs[,  'THEFT']),
 #                                x = as.matrix(attrs[, attr_names]),
-#                                W1 = W_equiv2, null.model='meanstd',
+#                                W1 = W_equiv, null.model='meanstd',
 #                                method='Nelder-Mead')
 # model1.bfgs <- sna::lnam(y = as.numeric(attrs[,  'THEFT']),
 #                        x = as.matrix(attrs[, attr_names]),
@@ -290,10 +329,15 @@ plot(model1.se)
 #                        method='Brent')
 # texreg::screenreg(list(model1.nm, model1.bfgs, model1.cg, model1.lbbfgs, model1.sann)) # model1.brent
 
+### END comparing different methods #######################################
+
 
 ### compare models with control #######################################
 
-model7.lm <- lm(BURGLARY ~ perc_unemp + med_age + LT_HS + HS + SOME_COLL + ASSOC + BACH + GRAD_PROF + perc_black + perc_asian + perc_white + perc_hispanic + perc_inc_under_25 + perc_inc_25_50 +  perc_inc_25_50 + perc_inc_50_75 + perc_inc_75_100 + perc_inc_100_150, data = attrs)
+model7.lm <- lm(BURGLARY ~ perc_unemp + med_age + LT_HS + HS + SOME_COLL + ASSOC + BACH + GRAD_PROF + perc_black + perc_asian + perc_white + perc_hispanic 
+                + perc_inc_under_25 + perc_inc_25_50 +  perc_inc_25_50 +  perc_inc_50_75 + perc_inc_75_100 + perc_inc_100_150, data = attrs)
+
+
 plot(model7.lm)
 
 texreg::screenreg(list(model7.lm, model7.am), custom.model.names = c('lm', 'lnam Communication'))
@@ -305,3 +349,26 @@ model7.se$sigma
 #LNAM SE: 0.04657553
 # LM:     0.05283
 summary(model7.lm)
+
+### END compare models with control #######################################
+
+library(dplyr)
+install.packages('corrplot')
+library(corrplot)
+
+corrplot(cor(node_info), method='color')
+# WHY is the R2 so high?
+# what is the net influence plot?
+# the RHO is really low and not significant, so this means there is no social influence?
+# What is the effect of the weights on the model? do we need to square, log, invert them, or what to do with them
+
+
+
+plot(network_i, layout = igraph::layout.fruchterman.reingold(network_i),
+     edge.arrow.size = igraph::E(network_i)$weight, # the farther away, the smaller
+     edge.color = '#eab676',
+     vertex.frame.color = '#ffffff',
+     # vertex.label.cex = 0.2,
+     vertex.label.color = 'black',
+     vertex.color = '#abdbe3',
+     vertex.size = 10)

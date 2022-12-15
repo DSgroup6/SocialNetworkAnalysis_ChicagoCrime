@@ -2,7 +2,7 @@ comm_crimes <- readr::read_csv("D:/Datasets/sna/Comm_crimes.csv")
 demo_data <- readr::read_csv("D:/Datasets/sna/ReferenceCCAProfiles20162020.csv")
 demo_data <- demo_data[order(demo_data$GEOID),] #order by area
 
-### Data preparation #############################
+############################# Data preparation #############################
 
 areas <- 1:77
 sub <- comm_crimes
@@ -113,7 +113,7 @@ node_info$GRAD_PROF <- demo_data$GRAD_PROF/ edu_pop
 
 as.matrix(node_info[node_info$areas == 3,c('Latitude','Longitude')])
 
-### Building fully connected geo Network ###############################
+##################### Building fully connected geo Network ###############################
 df_fully <- expand.grid(areas, areas)
 colnames(df_fully) <- c('area1', 'area2')
 
@@ -157,7 +157,7 @@ hist(weights.exp,breaks = 30, xlab = 'distance between 2 neighborhoods')
 network_i <- snafun::add_edge_attributes(network_i, c('weight'), weights.inverted) # 1/weight because the closer, the stronger the connection
 network_i <- snafun::remove_loops(network_i)
 
-### Adding vertex attributes ###############################
+####################### Adding vertex attributes ###############################
 data_in_network <-matrix(, nrow = 0, ncol = 31)
 
 #remove names
@@ -173,135 +173,57 @@ network_i <- snafun::add_vertex_attributes(network_i, value = data_in_network)
 
 # creating weight matrix
 net <- network_i
-attrs <- snafun::extract_all_vertex_attributes(net)
-colnames(attrs)
-attr_names <- c("perc_unemp", "med_age", "LT_HS","HS", "SOME_COLL", "ASSOC", "BACH", "GRAD_PROF", "perc_black", "perc_asian", "perc_white","perc_hispanic", 
-                "perc_inc_under_25", "perc_inc_25_50", "perc_inc_50_75", "perc_inc_75_100","perc_inc_100_150")
 
-
-crimes_names = c("THEFT","ASSAULT","BATTERY","CRIMINAL DAMAGE",'DECEPTIVE PRACTICE','NARCOTICS', 'BURGLARY', 'MOTOR VEHICLE THEFT', 'ROBBERY', "CRIMINAL TRESPASS")
-
-### LNAM using ADJACENCY MATRIX (These are the main results) #######################################
 streq2 <- snafun::to_matrix(net)
 diag(streq2) <- 0
-W_equiv2 <-  streq2 / rowSums(streq2)
+W_equiv <-  streq2 / rowSums(streq2)
 
-model1.am <- sna::lnam(y = as.numeric(attrs[,  'THEFT']),
-                       x = as.matrix(attrs[, attr_names]),
-                       W1 = W_equiv2, null.model='meanstd')
-model2.am <- sna::lnam(y = as.numeric(attrs[, 'ASSAULT']),
-                       x = as.matrix(attrs[, attr_names]),
-                       W1 = W_equiv2, null.model='meanstd')
-model3.am <- sna::lnam(y = as.numeric(attrs[, 'BATTERY']),
-                       x = as.matrix(attrs[, attr_names]),
-                       W1 = W_equiv2, null.model='meanstd')
-model4.am <- sna::lnam(y = as.numeric(attrs[, 'CRIMINAL DAMAGE']),
-                       x = as.matrix(attrs[, attr_names]),
-                       W1 = W_equiv2, null.model='meanstd')
-model5.am <- sna::lnam(y = as.numeric(attrs[, 'DECEPTIVE PRACTICE']),
-                       x = as.matrix(attrs[, attr_names]),
-                       W1 = W_equiv2, null.model='meanstd')
-model6.am <- sna::lnam(y = as.numeric(attrs[, 'NARCOTICS']),
-                       x = as.matrix(attrs[, attr_names]),
-                       W1 = W_equiv2, null.model='meanstd')
-model7.am <- sna::lnam(y = as.numeric(attrs[, 'BURGLARY']),
-                       x = as.matrix(attrs[, attr_names]),
-                       W1 = W_equiv2, null.model='meanstd')
-model8.am <- sna::lnam(y = as.numeric(attrs[, 'MOTOR VEHICLE THEFT']),
-                       x = as.matrix(attrs[, attr_names]),
-                       W1 = W_equiv2, null.model='meanstd')
-model9.am <- sna::lnam(y = as.numeric(attrs[, 'ROBBERY']),
-                       x = as.matrix(attrs[, attr_names]),
-                       W1 = W_equiv2, null.model='meanstd')
-model10.am <- sna::lnam(y = as.numeric(attrs[, "CRIMINAL TRESPASS"]),
-                        x = as.matrix(attrs[, attr_names]),
-                        W1 = W_equiv2, null.model='meanstd')
+attrs <- snafun::extract_all_vertex_attributes(net)
+attr_names <- c("perc_unemp", "med_age", "LT_HS","HS", "SOME_COLL", "ASSOC", "BACH", "GRAD_PROF", "perc_black", "perc_asian", "perc_white","perc_hispanic", 
+                "perc_inc_under_25", "perc_inc_25_50", "perc_inc_50_75", "perc_inc_75_100","perc_inc_100_150") 
 
-texreg::screenreg(list(model1.am,model2.am,model3.am,model4.am,model5.am,model6.am,model7.am,model8.am,model9.am,model10.am), custom.model.names = crimes_names)
-plot(model5.am)
-
-### LNAM using structural equivelence #######################################
-# this one does not make a lot of sence to use, since it looks at how 'similar' nodes are to eachother in terms of structure. but since they are fully connected this does not make sence. Either way its interesting to check.
-
-streq <- snafun::d_structural_equivalence(net, weights =  'weight')
-diag(streq) <- 0
-W_equiv <-  streq / rowSums(streq)
-
-model1.se <- sna::lnam(y = as.numeric(attrs[,  'THEFT']),
+model1 <- sna::lnam(y = as.numeric(attrs[,  'THEFT']),
                     x = as.matrix(attrs[, attr_names]),
                     W1 = W_equiv, null.model='meanstd')
-model2.se <- sna::lnam(y = as.numeric(attrs[, 'ASSAULT']),
+model2 <- sna::lnam(y = as.numeric(attrs[, 'ASSAULT']),
                     x = as.matrix(attrs[, attr_names]),
                     W1 = W_equiv, null.model='meanstd')
-model3.se <- sna::lnam(y = as.numeric(attrs[, 'BATTERY']),
+model3 <- sna::lnam(y = as.numeric(attrs[, 'BATTERY']),
                     x = as.matrix(attrs[, attr_names]),
                     W1 = W_equiv, null.model='meanstd')
-model4.se <- sna::lnam(y = as.numeric(attrs[, 'CRIMINAL DAMAGE']),
+model4 <- sna::lnam(y = as.numeric(attrs[, 'CRIMINAL DAMAGE']),
                     x = as.matrix(attrs[, attr_names]),
                     W1 = W_equiv, null.model='meanstd')
-model5.se <- sna::lnam(y = as.numeric(attrs[, 'DECEPTIVE PRACTICE']),
+model5 <- sna::lnam(y = as.numeric(attrs[, 'DECEPTIVE PRACTICE']),
                     x = as.matrix(attrs[, attr_names]),
                     W1 = W_equiv, null.model='meanstd')
-model6.se <- sna::lnam(y = as.numeric(attrs[, 'NARCOTICS']),
+model6 <- sna::lnam(y = as.numeric(attrs[, 'NARCOTICS']),
                     x = as.matrix(attrs[, attr_names]),
                     W1 = W_equiv, null.model='meanstd')
-model7.se <- sna::lnam(y = as.numeric(attrs[, 'BURGLARY']),
+model7 <- sna::lnam(y = as.numeric(attrs[, 'BURGLARY']),
                     x = as.matrix(attrs[, attr_names]),
                     W1 = W_equiv, null.model='meanstd')
-model8.se <- sna::lnam(y = as.numeric(attrs[, 'MOTOR VEHICLE THEFT']),
+model8 <- sna::lnam(y = as.numeric(attrs[, 'MOTOR VEHICLE THEFT']),
                     x = as.matrix(attrs[, attr_names]),
                     W1 = W_equiv, null.model='meanstd')
-model9.se <- sna::lnam(y = as.numeric(attrs[, 'ROBBERY']),
+model9 <- sna::lnam(y = as.numeric(attrs[, 'ROBBERY']),
                     x = as.matrix(attrs[, attr_names]),
                     W1 = W_equiv, null.model='meanstd')
-model10.se <- sna::lnam(y = as.numeric(attrs[, "CRIMINAL TRESPASS"]),
-              x = as.matrix(attrs[, attr_names]),
-              W1 = W_equiv, null.model='meanstd')
+model10 <- sna::lnam(y = as.numeric(attrs[, "CRIMINAL TRESPASS"]),
+                    x = as.matrix(attrs[, attr_names]),
+                    W1 = W_equiv, null.model='meanstd')
 
-texreg::screenreg(list(model1.se,model2.se,model3.se,model4.se,model5.se,model6.se,model7.se,model8.se,model9.se,model10.se), custom.model.names = crimes_names)
-plot(model1.se)
+crime_names = c("THEFT", "BATTERY","CRIMINAL DAMAGE",
+                "DECEPTIVE PRACTICE","ASSAULT",
+                "NARCOTICS", "BURGLARY","MOTOR VEHICLE THEFT",
+                "ROBBERY")
 
+texreg::screenreg(list(model1,model2,model3,model4,model5,model6,model7,model8,model9), custom.model.names = crime_names)
 
-### comparing if different methods have different effect #######################################
+summary(model6)
+plot(model1)
 
-# model1.nm <- sna::lnam(y = as.numeric(attrs[,  'THEFT']),
-#                                x = as.matrix(attrs[, attr_names]),
-#                                W1 = W_equiv2, null.model='meanstd',
-#                                method='Nelder-Mead')
-# model1.bfgs <- sna::lnam(y = as.numeric(attrs[,  'THEFT']),
-#                        x = as.matrix(attrs[, attr_names]),
-#                        W1 = W_equiv2, null.model='meanstd',
-#                        method='BFGS')
-# model1.cg <- sna::lnam(y = as.numeric(attrs[,  'THEFT']),
-#                        x = as.matrix(attrs[, attr_names]),
-#                        W1 = W_equiv2, null.model='meanstd',
-#                        method='CG')
-# model1.lbbfgs <- sna::lnam(y = as.numeric(attrs[, 'THEFT']),
-#                        x = as.matrix(attrs[, attr_names]),
-#                        W1 = W_equiv2, null.model='meanstd',
-#                        method='L-BFGS-B')
-# model1.sann <- sna::lnam(y = as.numeric(attrs[,  'THEFT']),
-#                        x = as.matrix(attrs[, attr_names]),
-#                        W1 = W_equiv2, null.model='meanstd',
-#                        method='SANN')
-# model1.brent <- sna::lnam(y = as.numeric(attrs[,  'THEFT']),
-#                        x = as.matrix(attrs[, attr_names]),
-#                        W1 = W_equiv2, null.model='meanstd',
-#                        method='Brent')
-# texreg::screenreg(list(model1.nm, model1.bfgs, model1.cg, model1.lbbfgs, model1.sann)) # model1.brent
-
-
-### compare models with control #######################################
-
-model7.lm <- lm(BURGLARY ~ perc_unemp + med_age + LT_HS + HS + SOME_COLL + ASSOC + BACH + GRAD_PROF + perc_black + perc_asian + perc_white + perc_hispanic + perc_inc_under_25 + perc_inc_25_50 +  perc_inc_25_50 + perc_inc_50_75 + perc_inc_75_100 + perc_inc_100_150, data = attrs)
-plot(model7.lm)
-
-texreg::screenreg(list(model7.lm, model7.am), custom.model.names = c('lm', 'lnam Communication'))
-
-sd(as.numeric(attrs[, 'BURGLARY']))
-model7.se$sigma
-# y:      0.0976622
-#LNAM AM: 0.04397922
-#LNAM SE: 0.04657553
-# LM:     0.05283
-summary(model7.lm)
+# WHY is the R2 so high?
+# what is the net influence plot?
+# the RHO is really low and not significant, so this means there is no social influence?
+# What is the effect of the weights on the model? do we need to square, log, invert them, or what to do with them
